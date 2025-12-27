@@ -1,0 +1,355 @@
+// Academics4 Database Schema
+// Connecting volunteer teachers with students in war-affected areas
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  admin
+  volunteer
+  student
+}
+
+enum MatchStatus {
+  auto_suggested
+  pending_email
+  email_sent
+  accepted
+  active
+  rejected
+  not_compatible
+  completed
+  paused
+}
+
+enum SessionStatus {
+  scheduled
+  completed
+  cancelled
+  no_show
+}
+
+enum CapacitySetBy {
+  volunteer
+  admin
+}
+
+enum AssignmentAction {
+  assigned
+  unassigned
+  reassigned
+}
+
+enum TriggerType {
+  new_student
+  new_volunteer
+  capacity_change
+}
+
+// Models
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  role          UserRole
+  isActive      Boolean   @default(true) @map("is_active")
+  isVerified    Boolean   @default(false) @map("is_verified")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastLogin     DateTime? @map("last_login")
+
+  volunteer           Volunteer?
+  student             Student?
+  adminMatches        Match[]             @relation("AdminMatches")
+  createdEmailTemplates EmailTemplate[]   @relation("CreatedTemplates")
+  createdCauses       Cause[]             @relation("CreatedCauses")
+  feedbackGiven       Feedback[]          @relation("FeedbackGiven")
+  feedbackReceived    Feedback[]          @relation("FeedbackReceived")
+  subjectAssignments  SubjectAssignment[] @relation("AssignedByAdmin")
+  refreshTokens       RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Volunteer {
+  id                          String       @id @default(uuid())
+  userId                      String       @unique @map("user_id")
+  fullName                    String       @map("full_name")
+  age                         Int?
+  phoneNumber                 String?      @map("phone_number")
+  city                        String?
+  country                     String?
+  area                        String?
+  universityAffiliation       String?      @map("university_affiliation")
+  fieldsOfExpertise           String[]     @map("fields_of_expertise")
+  subjectsQualified           String[]     @map("subjects_qualified")
+  languagesSpoken             String[]     @map("languages_spoken")
+  preferredLanguage           String?      @map("preferred_language")
+  onlineTeachingExperience    Boolean      @default(false) @map("online_teaching_experience")
+  diverseBackgroundExperience Boolean      @default(false) @map("diverse_background_experience")
+  hoursPerWeekAvailable       Int?         @map("hours_per_week_available")
+  currentCapacity             Int          @default(0) @map("current_capacity")
+  maxCapacity                 Int          @default(5) @map("max_capacity")
+  capacitySetBy               CapacitySetBy @default(volunteer) @map("capacity_set_by")
+  isAvailable                 Boolean      @default(true) @map("is_available")
+  causes                      String[]
+  additionalSupportWilling    String?      @map("additional_support_willing")
+  bio                         String?
+  rating                      Float        @default(0)
+  totalHoursVolunteered       Int          @default(0) @map("total_hours_volunteered")
+  studentsHelped              Int          @default(0) @map("students_helped")
+  isActive                    Boolean      @default(true) @map("is_active")
+  createdAt                   DateTime     @default(now()) @map("created_at")
+  updatedAt                   DateTime     @updatedAt @map("updated_at")
+
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matches             Match[]
+  subjectAssignments  SubjectAssignment[] @relation("AssignedToVolunteer")
+  previousAssignments SubjectAssignment[] @relation("PreviousVolunteer")
+
+  @@map("volunteers")
+}
+
+model Student {
+  id                    String   @id @default(uuid())
+  userId                String   @unique @map("user_id")
+  fullName              String   @map("full_name")
+  age                   Int?
+  gender                String?
+  phoneNumber           String?  @map("phone_number")
+  alternativeContact    String?  @map("alternative_contact")
+  currentCity           String?  @map("current_city")
+  currentCountry        String?  @map("current_country")
+  area                  String?
+  originalLocation      String?  @map("original_location")
+  cause                 String
+  fieldsOfStudy         String[] @map("fields_of_study")
+  topicsNeedSupport     Json?    @map("topics_need_support") // [{keyword: string, status: 'unassigned'|'assigned', assignedTo: volunteerId|null}]
+  originalUniversity    String?  @map("original_university")
+  currentUniversity     String?  @map("current_university")
+  creditsRemaining      Int?     @map("credits_remaining")
+  hasTranscripts        Boolean  @default(false) @map("has_transcripts")
+  preferredLanguage     String?  @map("preferred_language")
+  languagesSpoken       String[] @map("languages_spoken")
+  hoursPerWeekNeeded    Int?     @map("hours_per_week_needed")
+  deviceAccessLevel     Int?     @map("device_access_level")
+  internetAccessLevel   Int?     @map("internet_access_level")
+  materialsAccessLevel  Int?     @map("materials_access_level")
+  specialNeeds          String?  @map("special_needs")
+  educationalBackground String?  @map("educational_background")
+  careerGoals           String?  @map("career_goals")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matches            Match[]
+  subjectAssignments SubjectAssignment[]
+
+  @@map("students")
+}
+
+model FieldOfStudy {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  category      String?
+  parentFieldId String?  @map("parent_field_id")
+  relatedFields String[] @map("related_fields")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  parentField   FieldOfStudy?  @relation("FieldHierarchy", fields: [parentFieldId], references: [id])
+  childFields   FieldOfStudy[] @relation("FieldHierarchy")
+  matches       Match[]        @relation("PrimaryField")
+  cacheEntries  MatchScoresCache[]
+
+  @@map("fields_of_study")
+}
+
+model Match {
+  id                   String      @id @default(uuid())
+  studentId            String      @map("student_id")
+  volunteerId          String      @map("volunteer_id")
+  assignedSubjects     String[]    @map("assigned_subjects")
+  primaryFieldId       String?     @map("primary_field_id")
+  matchScore           Float?      @map("match_score")
+  autoSuggested        Boolean     @default(true) @map("auto_suggested")
+  matchReasons         Json?       @map("match_reasons")
+  status               MatchStatus @default(auto_suggested)
+  rejectionReason      String?     @map("rejection_reason")
+  adminId              String?     @map("admin_id")
+  adminNotes           String?     @map("admin_notes")
+  emailSentAt          DateTime?   @map("email_sent_at")
+  volunteerRespondedAt DateTime?   @map("volunteer_responded_at")
+  startDate            DateTime?   @map("start_date")
+  endDate              DateTime?   @map("end_date")
+  totalSessions        Int         @default(0) @map("total_sessions")
+  totalHours           Float       @default(0) @map("total_hours")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+
+  student      Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  volunteer    Volunteer     @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+  primaryField FieldOfStudy? @relation("PrimaryField", fields: [primaryFieldId], references: [id])
+  admin        User?         @relation("AdminMatches", fields: [adminId], references: [id])
+  sessions     Session[]
+  feedback     Feedback[]
+
+  @@unique([studentId, volunteerId])
+  @@map("matches")
+}
+
+model SubjectAssignment {
+  id                    String           @id @default(uuid())
+  studentId             String           @map("student_id")
+  subjectKeyword        String           @map("subject_keyword")
+  assignedToVolunteerId String?          @map("assigned_to_volunteer_id")
+  assignedByAdminId     String?          @map("assigned_by_admin_id")
+  action                AssignmentAction
+  previousVolunteerId   String?          @map("previous_volunteer_id")
+  reason                String?
+  createdAt             DateTime         @default(now()) @map("created_at")
+
+  student           Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assignedToVolunteer Volunteer? @relation("AssignedToVolunteer", fields: [assignedToVolunteerId], references: [id])
+  assignedByAdmin   User?      @relation("AssignedByAdmin", fields: [assignedByAdminId], references: [id])
+  previousVolunteer Volunteer? @relation("PreviousVolunteer", fields: [previousVolunteerId], references: [id])
+
+  @@map("subject_assignments")
+}
+
+model EmailTemplate {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  subject   String
+  body      String
+  variables Json?
+  isActive  Boolean  @default(true) @map("is_active")
+  isDefault Boolean  @default(false) @map("is_default")
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  creator User? @relation("CreatedTemplates", fields: [createdBy], references: [id])
+
+  @@map("email_templates")
+}
+
+model Session {
+  id                  String        @id @default(uuid())
+  matchId             String        @map("match_id")
+  scheduledAt         DateTime?     @map("scheduled_at")
+  durationMinutes     Int?          @map("duration_minutes")
+  status              SessionStatus @default(scheduled)
+  platform            String?       // Communication platform: WhatsApp, Zoom, Google Meet, etc.
+  subjectsCovered     String[]      @map("subjects_covered")
+  volunteerNotes      String?       @map("volunteer_notes")
+  studentNotes        String?       @map("student_notes")
+  studentAttendance   Boolean?      @map("student_attendance")
+  volunteerAttendance Boolean?      @map("volunteer_attendance")
+  materialsShared     Json?         @map("materials_shared")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  match    Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  feedback Feedback[]
+
+  @@map("sessions")
+}
+
+model Feedback {
+  id                String   @id @default(uuid())
+  matchId           String   @map("match_id")
+  sessionId         String?  @map("session_id")
+  givenBy           String   @map("given_by")
+  givenTo           String   @map("given_to")
+  rating            Int?
+  knowledgeRating   Int?     @map("knowledge_rating")
+  teachingRating    Int?     @map("teaching_rating")
+  punctualityRating Int?     @map("punctuality_rating")
+  subjectsFeedback  Json?    @map("subjects_feedback")
+  comments          String?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  match   Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  session Session? @relation(fields: [sessionId], references: [id])
+  giver   User     @relation("FeedbackGiven", fields: [givenBy], references: [id])
+  receiver User    @relation("FeedbackReceived", fields: [givenTo], references: [id])
+
+  @@map("feedback")
+}
+
+model Cause {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  priority    Int      @default(0)
+  region      String?
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  creator User? @relation("CreatedCauses", fields: [createdBy], references: [id])
+
+  @@map("causes")
+}
+
+model MatchScoresCache {
+  id           String   @id @default(uuid())
+  studentId    String   @map("student_id")
+  volunteerId  String   @map("volunteer_id")
+  fieldId      String?  @map("field_id")
+  score        Float
+  reasons      Json?
+  isAvailable  Boolean? @map("is_available")
+  calculatedAt DateTime @default(now()) @map("calculated_at")
+  expiresAt    DateTime @map("expires_at")
+
+  field FieldOfStudy? @relation(fields: [fieldId], references: [id])
+
+  @@unique([studentId, volunteerId, fieldId])
+  @@map("match_scores_cache")
+}
+
+model MatchTrigger {
+  id          String      @id @default(uuid())
+  triggerType TriggerType @map("trigger_type")
+  entityId    String      @map("entity_id")
+  processed   Boolean     @default(false)
+  matchesFound Int        @default(0) @map("matches_found")
+  processedAt DateTime?   @map("processed_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  @@map("match_triggers")
+}
+
+// Cache for OpenAI embeddings to avoid repeated API calls
+model EmbeddingCache {
+  id        String   @id @default(uuid())
+  text      String   @unique
+  embedding Json     // Stored as array of floats
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("embedding_cache")
+}
